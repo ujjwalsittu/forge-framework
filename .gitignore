@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+*.tsbuildinfo
+.turbo/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Forge runtime
+sites/*/files/
+sites/*/.adminpass
+*.sqlite
+*.sqlite-journal
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/settings.json
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Docker
+.docker-data/

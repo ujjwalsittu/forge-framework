@@ -1,0 +1,26 @@
+{
+  "name": "forge-framework",
+  "version": "0.0.1",
+  "schema_version": "1",
+  "packages": {
+    "core": "packages/core",
+    "cli": "packages/cli",
+    "desk": "packages/desk",
+    "ui": "packages/ui",
+    "permissions": "packages/permissions",
+    "workflow": "packages/workflow",
+    "print": "packages/print",
+    "reports": "packages/reports",
+    "erp": "packages/erp",
+    "hr": "packages/hr",
+    "crm": "packages/crm",
+    "helpdesk": "packages/helpdesk",
+    "mfg": "packages/mfg"
+  },
+  "cloud": "cloud",
+  "agent": "agent",
+  "sites_dir": "sites",
+  "apps_dir": "apps",
+  "node_min": "20.0.0",
+  "pnpm_min": "9.0.0"
+}

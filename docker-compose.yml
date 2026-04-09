@@ -1,0 +1,69 @@
+# Forge Framework — Development Services
+# Usage: docker compose up -d
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: forge-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: forge
+      POSTGRES_PASSWORD: forge_dev_password_change_in_prod
+      POSTGRES_DB: forge_control
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./.docker-data/postgres:/var/lib/postgresql/data
+      - ./scripts/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forge"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: forge-redis
+    restart: unless-stopped
+    command: redis-server --requirepass forge_redis_dev_change_in_prod --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./.docker-data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "forge_redis_dev_change_in_prod", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: forge-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: forge_minio
+      MINIO_ROOT_PASSWORD: forge_minio_dev_change_in_prod
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - ./.docker-data/minio:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Optional: Adminer for database inspection
+  adminer:
+    image: adminer:latest
+    container_name: forge-adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    profiles:
+      - debug
