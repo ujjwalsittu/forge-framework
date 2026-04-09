@@ -1,79 +1,57 @@
 name: CI
+
 on:
   push:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
-    name: Test (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node: ['20', '22']
+        node-version: [20, 22]
+
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:15
         env:
-          POSTGRES_USER: forge
-          POSTGRES_PASSWORD: test_password
+          POSTGRES_USER: forge_test
+          POSTGRES_PASSWORD: forge_test
           POSTGRES_DB: forge_test
+        ports:
+          - 5432:5432
         options: >-
-          --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
-        ports: ['5432:5432']
+          --health-cmd="pg_isready"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
       redis:
-        image: redis:7-alpine
+        image: redis:7
+        ports:
+          - 6379:6379
         options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
-        ports: ['6379:6379']
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          node-version: ${{ matrix.node-version }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm type-check
       - run: pnpm lint
       - run: pnpm test
-        env:
-          FORGE_DB_HOST: localhost
-          FORGE_DB_PORT: 5432
-          FORGE_DB_USER: forge
-          FORGE_DB_PASSWORD: test_password
-          FORGE_DB_NAME: forge_test
-          FORGE_REDIS_URL: redis://localhost:6379
-
-  release:
-    name: Release
-    needs: test
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: pnpm
-          registry-url: 'https://registry.npmjs.org'
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - name: Create Release Pull Request or Publish
-        uses: changesets/action@v1
-        with:
-          publish: pnpm release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    env:
+      DATABASE_URL: postgres://forge_test:forge_test@localhost:5432/forge_test
+      REDIS_URL: redis://localhost:6379
