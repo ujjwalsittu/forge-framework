@@ -24,7 +24,21 @@
     "@typescript-eslint/no-explicit-any": "error",
     "@typescript-eslint/no-floating-promises": "error",
     "@typescript-eslint/consistent-type-imports": "error",
-    "@typescript-eslint/explicit-function-return-type": "warn"
+    "@typescript-eslint/explicit-function-return-type": "warn",
+    "no-eval": "error",
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": [
+              "@forge/*"
+            ],
+            "message": "Direct @forge/* imports not allowed between packages. Use peerDependencies only."
+          }
+        ]
+      }
+    ]
   },
   "ignorePatterns": [
     "dist/",
