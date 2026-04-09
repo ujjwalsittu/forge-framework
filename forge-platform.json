@@ -1,0 +1,967 @@
+{
+  "_comment": "Forge Framework — Complete Platform Specification v1.0. Pass this to Claude Code via --context or by placing it at the project root. This is the single authoritative spec document.",
+  "_version": "1.0.0",
+  "_last_updated": "2026-04-09",
+
+  "platform": {
+    "name": "Forge",
+    "codename": "Vulcan",
+    "tagline": "Metadata-driven, truly modular application platform for Node.js",
+    "elevator_pitch": "Forge is to Node.js what Frappe is to Python — but better. A Schematype (TypeScript file in git) defines your data model, validation, permissions, hooks, and UI layout. Forge auto-generates the database table, REST API, GraphQL type, TypeScript SDK, Zod validator, and Desk form — all from that one file. Every module is an independent npm package: @forge/hr never forces @forge/erp.",
+    "version": "0.0.1-alpha",
+    "github_org": "your-org",
+    "primary_repo": "forge-framework",
+    "website": "https://forge.dev",
+    "docs": "https://docs.forge.dev",
+    "npm_scope": "@forge",
+    "licenses": {
+      "@forge/core": "MIT",
+      "forge-cli": "MIT",
+      "forge-ui": "MIT",
+      "@forge/desk": "MIT",
+      "@forge/permissions": "MIT",
+      "@forge/workflow": "MIT",
+      "@forge/print": "MIT",
+      "@forge/reports": "MIT",
+      "@forge/erp": "MIT",
+      "@forge/hr": "MIT",
+      "@forge/crm": "MIT",
+      "@forge/helpdesk": "MIT",
+      "@forge/mfg": "MIT",
+      "@forge/insights": "MIT",
+      "@forge/collab": "MIT",
+      "@forge/drive": "MIT",
+      "forge-cloud": "AGPL-3.0",
+      "forge-agent": "MIT"
+    }
+  },
+
+  "design_philosophy": {
+    "zero_forced_dependencies": "Installing @forge/hr NEVER auto-installs @forge/erp. Each module declares peerDependencies explicitly. The CLI surfaces warnings but installs NOTHING without explicit user consent.",
+    "typescript_first": "No any. No @ts-ignore. No JS files in src/. Schematypes generate typed SDK clients. End-to-end type safety via tRPC adapters.",
+    "git_is_truth": "Schematype definitions live as TypeScript files in version control. Never in a database. Schema history = git history. Schema diffs = code PRs reviewable by humans.",
+    "tenant_isolation_by_design": "Cross-tenant data access throws at the ORM layer. Every Redis key is auto-prefixed {site-id}:. Every BullMQ queue is namespaced. Proven by automated tests.",
+    "no_floating_point_money": "All currency calculations use Decimal.js. No IEEE 754 arithmetic on financial data ever.",
+    "migration_never_destroys": "The migration runner NEVER auto-drops columns or tables. Removal requires explicit --prune flag with double confirmation. Data safety is a hard constraint.",
+    "frontend_freedom": "@forge/desk is optional. Any React, Vue, Next.js, SvelteKit, or Flutter app consumes the same auto-generated APIs. No coupling.",
+    "deploy_anywhere": "Self-hosted: 3 commands. Cloud: 60 seconds. Hybrid: your servers managed by Forge Cloud. Identical behaviour in all modes.",
+    "open_core_revenue": "Everything is MIT. Money from Forge Cloud hosting (compute-based, not per-user). 25% of cloud revenue shared with marketplace app developers.",
+    "windows_first_class": "forge-cli works natively on Windows. No WSL. No Bash. Docker Desktop handles Postgres+Redis."
+  },
+
+  "tech_stack": {
+    "runtime": {
+      "name": "Node.js 20 LTS (Bun-compatible)",
+      "minimum_version": "20.0.0",
+      "rationale": "Single language for CLI, HTTP server, workers, and tests. No Python split-context like Frappe."
+    },
+    "http_server": {
+      "package": "fastify@4",
+      "plugins": [
+        "@fastify/cors — CORS whitelist",
+        "@fastify/helmet — security headers (CSP, HSTS, X-Frame, X-Content-Type)",
+        "@fastify/rate-limit — per-IP rate limiting",
+        "@fastify/jwt — JWT token validation",
+        "@fastify/multipart — file uploads",
+        "@fastify/static — static file serving",
+        "@fastify/swagger — OpenAPI spec generation",
+        "@fastify/websocket — WebSocket upgrade"
+      ],
+      "rationale": "2-3x faster than Express. Schema-based request validation built in. Plugin ecosystem."
+    },
+    "orm": {
+      "package": "drizzle-orm",
+      "adapters": {
+        "postgres": "drizzle-orm/postgres-js — primary, all production tenants",
+        "sqlite": "drizzle-orm/better-sqlite3 — dev/test, CI, per-test isolation",
+        "mysql": "drizzle-orm/mysql2 — compatibility mode (Frappe migrations)"
+      },
+      "rationale": "TypeScript-native, SQL-first ORM. Schema = TypeScript objects. Drizzle-kit handles migrations. Supports all target databases."
+    },
+    "database_primary": "PostgreSQL 15+",
+    "database_dev_test": "SQLite (via better-sqlite3, in-memory for tests)",
+    "cache_queue": {
+      "package": "ioredis + bullmq",
+      "redis_version": "7+",
+      "queue_names": {
+        "high": "{site-id}:forge:high — auth events, webhook delivery",
+        "default": "{site-id}:forge:default — document saves, email sends",
+        "low": "{site-id}:forge:low — report generation, PDF rendering, bulk ops"
+      },
+      "rationale": "BullMQ is the most production-proven Node.js queue. Redis for cache + queue + pub-sub in one."
+    },
+    "realtime": {
+      "package": "socket.io@4",
+      "adapter": "@socket.io/redis-adapter",
+      "room_strategy": "One room per site: forge:{site-id}. Events scoped to room, zero cross-tenant broadcast possible."
+    },
+    "frontend_build": "Vite 5 (Rollup under the hood, fast HMR)",
+    "frontend_framework": "React 18 + TypeScript",
+    "frontend_styling": "Tailwind CSS 3 + Shadcn/ui components",
+    "frontend_state": "Zustand (global UI state) + TanStack Query (server state)",
+    "frontend_routing": "TanStack Router (type-safe routes)",
+    "frontend_forms": "React Hook Form + Zod resolvers",
+    "frontend_tables": "TanStack Table",
+    "validation": "Zod (auto-generated from Schematypes, shared between client and server)",
+    "auth": {
+      "sessions": "Lucia Auth (cookie-based sessions with database backend)",
+      "api_keys": "bcrypt-hashed, never stored plaintext, never returned after creation",
+      "oauth": "oslo (from Lucia ecosystem) — future: GitHub, Google, Microsoft SSO"
+    },
+    "pdf": "Puppeteer + Handlebars templates (server-side rendering)",
+    "file_storage": {
+      "interface": "S3-compatible API",
+      "local_dev": "MinIO (Docker)",
+      "production": "AWS S3, Cloudflare R2, Backblaze B2, or any S3-compatible"
+    },
+    "process_manager": {
+      "dev": "Fastify built-in watch mode",
+      "production": "PM2 with cluster mode (auto-configured by forge-cli)"
+    },
+    "monitoring": {
+      "traces": "OpenTelemetry SDK",
+      "metrics": "Prometheus client",
+      "logging": "Pino (structured JSON logging)"
+    },
+    "testing": {
+      "unit_integration": "Vitest (Jest-compatible, ESM-native)",
+      "e2e": "Playwright (future)",
+      "db_isolation": "Each test file spins up isolated SQLite in-memory DB",
+      "containers": "testcontainers-node for integration tests needing real Postgres"
+    },
+    "cli": {
+      "framework": "Commander.js (command parsing)",
+      "prompts": "Inquirer.js (interactive prompts)",
+      "output": "Chalk (colours) + Ora (spinners) + cli-table3 (tables)",
+      "cross_platform": "All path operations via path.join(), no shell-specific syntax"
+    },
+    "monorepo": {
+      "package_manager": "pnpm@9 with workspace protocol",
+      "versioning": "Changesets (@changesets/cli)",
+      "linting": "ESLint 8 + @typescript-eslint/strict-type-checked",
+      "formatting": "Prettier 3"
+    }
+  },
+
+  "schematype_engine": {
+    "description": "The Schematype is the single most important concept in Forge. Everything else derives from it.",
+    "definition_signature": "defineSchema(config: SchematypeConfig): SchematypeDefinition",
+    "file_location": "apps/{module}/schemas/{PascalCaseName}.ts  OR  packages/{module}/src/schemas/{PascalCaseName}.ts",
+
+    "config_shape": {
+      "name": "string — PascalCase, unique across the workspace. Becomes the DB table name (tab{Name} convention omitted — just the name).",
+      "module": "string — npm package that owns this schema. e.g. '@forge/hr'",
+      "label": "string — human-readable name for UI display",
+      "label_plural": "string? — plural form for list views",
+      "titleField": "string — name of the field shown as the document title in links and list views",
+      "naming": {
+        "description": "How new document names are auto-generated",
+        "options": [
+          "'prompt' — user types a name",
+          "'autoincrement' — 1, 2, 3...",
+          "'series:{PREFIX}-{YYYY}-{####}' — e.g. 'INV-2025-0001'",
+          "'field:{fieldName}' — copy value from another field",
+          "'expression:{template}' — Handlebars-style template"
+        ]
+      },
+      "isSubmittable": "boolean? — if true, documents have Draft/Submitted/Cancelled lifecycle with beforeSubmit/afterSubmit hooks",
+      "isSingleton": "boolean? — if true, only one instance exists (like Settings doctypes)",
+      "trackChanges": "boolean? — if true, every save creates a version snapshot in _forge_versions table",
+      "searchFields": "string[]? — fields indexed for full-text search",
+      "listSettings": {
+        "defaultSort": "{ field: string, direction: 'asc' | 'desc' }",
+        "defaultFilters": "FilterDefinition[]",
+        "pageSize": "number (default: 20)",
+        "visibleColumns": "string[]"
+      },
+      "fields": "FieldDefinition[] — see field_types below",
+      "layout": {
+        "description": "Optional form layout. If omitted, fields render in definition order.",
+        "sections": [
+          {
+            "label": "string",
+            "columns": "1 | 2 | 3",
+            "fields": "string[] — field names in this section",
+            "collapsible": "boolean?",
+            "defaultCollapsed": "boolean?"
+          }
+        ]
+      },
+      "permissions": "PermissionRule[] — see permission_model below",
+      "hooks": {
+        "beforeValidate": "string | HookFunction — path to module or inline function",
+        "validate": "string | HookFunction",
+        "beforeSave": "string | HookFunction",
+        "afterSave": "string | HookFunction",
+        "beforeSubmit": "string | HookFunction",
+        "afterSubmit": "string | HookFunction",
+        "beforeCancel": "string | HookFunction",
+        "afterCancel": "string | HookFunction",
+        "beforeDelete": "string | HookFunction",
+        "afterDelete": "string | HookFunction",
+        "onFormLoad": "string | ClientHookFunction — runs in browser only",
+        "onFieldChange": "{ [fieldName: string]: string | ClientHookFunction }"
+      },
+      "workflow": "string? — name of a WorkflowDefinition to attach",
+      "printFormats": "string[]? — names of PrintFormatDefinition to show",
+      "dashboard": "DashboardConfig? — charts and stats to show at top of form",
+      "links": "LinkConfig[]? — related documents to show in form sidebar",
+      "customActions": "ActionConfig[]? — buttons to add to form toolbar",
+      "indexes": "IndexConfig[]? — additional DB indexes beyond title + naming fields"
+    },
+
+    "field_types": {
+      "Data": {
+        "description": "Short text. VARCHAR(255) by default.",
+        "options": { "maxLength": "number?", "minLength": "number?", "pattern": "RegExp string?", "options": "string[]? (autocomplete hints)", "sensitive": "boolean? (never logged, never in API default response)" }
+      },
+      "LongText": {
+        "description": "Long text. TEXT column. Optional rich text editor (TipTap).",
+        "options": { "richText": "boolean?", "maxLength": "number?" }
+      },
+      "Int": {
+        "description": "Integer. BIGINT column.",
+        "options": { "min": "number?", "max": "number?" }
+      },
+      "Float": {
+        "description": "Decimal number. DOUBLE PRECISION column. NOT for money.",
+        "options": { "min": "number?", "max": "number?", "precision": "number?" }
+      },
+      "Currency": {
+        "description": "Money. DECIMAL(20,9) column. Uses Decimal.js in all calculations. NEVER floating point.",
+        "options": { "currencyField": "string? — name of another field holding the currency code" }
+      },
+      "Percent": {
+        "description": "Percentage. DECIMAL(10,5) column. UI shows 0-100 with % sign.",
+        "options": { "min": "number?", "max": "number?" }
+      },
+      "Date": { "description": "Date only. DATE column. ISO 8601.", "options": { "defaultToday": "boolean?" } },
+      "DateTime": { "description": "Date + time. TIMESTAMPTZ column. Always UTC in DB, displayed in tenant timezone.", "options": { "defaultNow": "boolean?" } },
+      "Time": { "description": "Time of day. TIME column.", "options": {} },
+      "Duration": { "description": "Duration in seconds. INTEGER column. UI shows HH:MM:SS or Xh Ym.", "options": {} },
+      "Select": {
+        "description": "Dropdown with static options. VARCHAR column.",
+        "options": { "options": "string[] | { value: string, label: string }[] — REQUIRED", "multiple": "boolean? — multi-select, stored as JSON array" }
+      },
+      "Link": {
+        "description": "Foreign key to another Schematype. VARCHAR column storing the target's name field.",
+        "options": { "to": "string — target Schematype name. REQUIRED", "filters": "FilterDefinition[]? — restrict link options", "fetchFields": "string[]? — fields to fetch and display from linked doc" }
+      },
+      "DynamicLink": {
+        "description": "Polymorphic FK. Two columns: one for the Schematype name, one for the document name.",
+        "options": { "typeField": "string — name of the companion field holding the Schematype name. REQUIRED" }
+      },
+      "ChildTable": {
+        "description": "Inline table of child documents. Creates a separate DB table with parent_id FK and idx column for ordering.",
+        "options": { "schema": "string — name of the child Schematype. REQUIRED", "minRows": "number?", "maxRows": "number?" }
+      },
+      "Table": {
+        "description": "Like ChildTable but non-Schematype (lightweight, no document history).",
+        "options": { "columns": "TableColumnDef[]" }
+      },
+      "Attach": {
+        "description": "File attachment. Stores S3 key as VARCHAR. Multiple option creates separate _forge_attachments rows.",
+        "options": { "multiple": "boolean?", "allowedTypes": "string[]? — MIME types", "maxSizeMB": "number?" }
+      },
+      "AttachImage": {
+        "description": "Image attachment with preview. Same as Attach but UI shows image preview.",
+        "options": { "multiple": "boolean?" }
+      },
+      "Check": { "description": "Boolean toggle. BOOLEAN column.", "options": { "defaultValue": "boolean?" } },
+      "Int": { "description": "Integer.", "options": { "min": "number?", "max": "number?" } },
+      "AutoName": {
+        "description": "The document name/ID field. Read-only. Generated by the naming strategy.",
+        "options": { "readOnly": "true (always)" }
+      },
+      "JSON": {
+        "description": "Arbitrary JSON. JSONB column (Postgres) / TEXT column (SQLite/MySQL).",
+        "options": { "schema": "Zod schema string? — validate the JSON structure" }
+      },
+      "Color": { "description": "Hex colour picker. VARCHAR(7) column.", "options": {} },
+      "Barcode": { "description": "Barcode / QR scanner input. VARCHAR column. Desk renders scanner widget.", "options": { "barcodeType": "'qr' | 'code128' | 'ean13' | 'auto'?" } },
+      "Geolocation": { "description": "Latitude/longitude point. Two DECIMAL columns (lat, lng).", "options": { "showMap": "boolean?" } },
+      "Password": { "description": "Hashed password. TEXT column. bcrypt-hashed. Never returned by API.", "options": {} },
+      "Rating": { "description": "Star rating. TINYINT(1) column. 1-5.", "options": { "max": "number? (default: 5)" } },
+      "Markdown": { "description": "Markdown content. TEXT column. Rendered as HTML in Desk.", "options": {} },
+      "Code": { "description": "Source code block. TEXT column. Syntax highlighting in Desk.", "options": { "language": "string? — syntax language for highlighting" } },
+      "HTML": { "description": "Raw HTML. TEXT column. Sanitized via DOMPurify before storage.", "options": {} },
+      "Signature": { "description": "Digital signature. Stores as base64 PNG. TEXT column.", "options": {} }
+    },
+
+    "auto_generated_outputs": {
+      "database_table": {
+        "description": "Drizzle table definition + CREATE TABLE migration SQL",
+        "details": [
+          "Primary key: id UUID DEFAULT gen_random_uuid()",
+          "Name/title field as defined by titleField",
+          "created_at TIMESTAMPTZ DEFAULT now()",
+          "updated_at TIMESTAMPTZ",
+          "created_by VARCHAR FK to users",
+          "modified_by VARCHAR FK to users",
+          "owner VARCHAR FK to users",
+          "docstatus SMALLINT — 0=Draft, 1=Submitted, 2=Cancelled",
+          "idx INTEGER — for ordering within parent (ChildTable only)",
+          "parent_id UUID FK — for ChildTable relations",
+          "All user-defined fields as columns",
+          "Index on: name, created_at, owner, parent_id (for child tables)"
+        ]
+      },
+      "rest_api": {
+        "base_path": "/api/resource/{SchematypeName}",
+        "endpoints": {
+          "GET /api/resource/{Name}": "List documents. Query params: filters (JSON), fields (comma-sep), limit, offset, order_by, order_dir",
+          "POST /api/resource/{Name}": "Create document. Body: partial doc without name. Returns full doc.",
+          "GET /api/resource/{Name}/{docName}": "Get single document by name.",
+          "PUT /api/resource/{Name}/{docName}": "Update document. Partial body accepted.",
+          "DELETE /api/resource/{Name}/{docName}": "Delete document (soft delete to _forge_deleted if trackChanges=true)",
+          "POST /api/resource/{Name}/{docName}/submit": "Submit document (isSubmittable only)",
+          "POST /api/resource/{Name}/{docName}/cancel": "Cancel submitted document",
+          "GET /api/resource/{Name}/{docName}/versions": "Get version history (trackChanges only)",
+          "POST /api/method/{modulePath}": "Call a whitelisted server function directly"
+        },
+        "response_envelope": { "data": "any", "message": "string?", "errors": "ValidationError[]?" },
+        "authentication": "Bearer token (session or API key) in Authorization header",
+        "permissions": "Enforced on every endpoint: read/write/create/delete checked before any DB operation",
+        "field_filtering": "Hidden fields stripped from all responses for non-privileged users"
+      },
+      "graphql": {
+        "package": "@pothos/core + @pothos/plugin-drizzle",
+        "endpoint": "/api/graphql",
+        "features": [
+          "Auto-generated types for all Schemtypes",
+          "Queries: getDoc, listDocs with filtering/pagination",
+          "Mutations: createDoc, updateDoc, deleteDoc, submitDoc",
+          "Subscriptions: docUpdated (via Socket.io bridge)",
+          "Relay-compatible pagination cursors"
+        ]
+      },
+      "trpc_adapter": {
+        "description": "Type-safe API client usable in Next.js or other TypeScript frontends",
+        "usage": "import { forge } from '@forge/trpc-client'\\nawait forge.SalesOrder.create({ customer: 'ACME', ... })"
+      },
+      "typescript_types": {
+        "description": "Generated TypeScript interfaces for each Schematype",
+        "examples": [
+          "type InvoiceDoc = ForgeDoc<'Invoice'> — all fields typed",
+          "type NewInvoice = NewDoc<'Invoice'> — omits auto fields (id, created_at, etc.)",
+          "type InvoiceFilter = Filter<'Invoice'> — typed filter expressions"
+        ]
+      },
+      "zod_schema": {
+        "description": "Zod validator generated from field definitions. Used server-side in API validation and client-side in form validation.",
+        "location": "Auto-generated at build time, never hand-edited"
+      },
+      "desk_ui": {
+        "list_view": "Sortable, filterable, paginated table. Column visibility toggle. Saved filters. Bulk actions.",
+        "form_view": "Renders from layout.sections definition. Field-level permission enforcement (read-only / hidden). Save/submit/cancel toolbar.",
+        "kanban_view": "Drag-drop by a Select field. Auto-generated if isSubmittable or has a status field.",
+        "calendar_view": "Auto-generated if has Date or DateTime fields.",
+        "timeline_view": "Auto-generated if trackChanges=true."
+      },
+      "openapi_spec": {
+        "path": "/api/openapi.json",
+        "description": "OpenAPI 3.1 spec. Every Schematype contributes automatically. No manual annotation.",
+        "swagger_ui": "/api/docs (development mode only)"
+      }
+    },
+
+    "hooks_lifecycle": {
+      "description": "Hooks are functions that run at defined points in a document's lifecycle. Hooks run server-side except onFormLoad and onFieldChange which run in the browser.",
+      "execution_order_on_save": [
+        "1. beforeValidate — mutate fields before validation. Good for: normalization, auto-setting defaults.",
+        "2. validate — throw ValidationError to block save. For: cross-field rules, business logic checks.",
+        "3. beforeSave — last mutation before DB write. For: compute totals, set computed fields, external API calls.",
+        "4. DB write (atomic transaction)",
+        "5. afterSave — post-write side effects. For: enqueue jobs, notifications, update linked docs. Do NOT throw here."
+      ],
+      "execution_order_on_submit": [
+        "1. beforeSubmit — validate submission readiness (stock available, credit limit, etc.)",
+        "2. DB: set docstatus=1",
+        "3. afterSubmit — create downstream docs (GL entries, stock ledger, etc.)"
+      ],
+      "hook_function_signature": {
+        "server_hooks": "async (doc: ForgeDoc<N>, context: ForgeContext) => void | never",
+        "client_hooks": "(form: FormAPI, doc: Partial<ForgeDoc<N>>) => void"
+      },
+      "ValidationError": "throw new forge.ValidationError('Field name', 'Error message') to block save with a field-specific error",
+      "ForgeError": "throw new forge.ForgeError('Message', 'ERROR_CODE') for non-field errors"
+    }
+  },
+
+  "multitenancy_design": {
+    "description": "One Forge process serves unlimited tenant sites. Site identity resolved from HTTP Host header at request boundary.",
+    "site_config_fields": {
+      "id": "UUID — internal identifier",
+      "host": "string — domain name used as primary key in lookup",
+      "name": "string — human name (displayed in Desk header)",
+      "db_url": "string — PostgreSQL connection string for this tenant",
+      "redis_namespace": "string — prefix for all Redis keys: {namespace}:",
+      "installed_modules": "string[] — npm package names installed on this site",
+      "feature_flags": "Record<string, boolean> — per-tenant feature toggles",
+      "timezone": "string — IANA tz (e.g. 'Asia/Kolkata')",
+      "language": "string — BCP 47 language tag (e.g. 'en-IN')",
+      "currency": "string — ISO 4217 code (e.g. 'INR')",
+      "date_format": "string (e.g. 'DD/MM/YYYY')",
+      "plan": "'starter' | 'pro' | 'enterprise' | 'selfhosted'",
+      "status": "'active' | 'suspended' | 'pending'",
+      "created_at": "timestamp",
+      "custom_config": "JSONB — arbitrary per-tenant configuration"
+    },
+    "request_pipeline": {
+      "step_1_nginx": "Nginx terminates TLS. Preserves Host header. Proxies to Forge Fastify process.",
+      "step_2_site_resolver": "onRequest hook. Reads Host header. Checks Redis cache (60s TTL). Falls back to forge_sites DB table. Returns 404 for unknown hosts.",
+      "step_3_context_injection": "asyncLocalStorage.run({ site, db: poolManager.get(site.id), redis: nsRedis(site.redis_namespace) }, handler)",
+      "step_4_auth_middleware": "Validates session token or API key against the tenant's own users table. Sets ctx.user = { id, name, email, roles }. Guest routes skip this.",
+      "step_5_permission_check": "Every route handler calls forge.requirePermission(action, schematype) before any DB operation.",
+      "step_6_route_handler": "Business logic. ORM queries automatically scoped to tenant DB. No tenant arg needed anywhere.",
+      "step_7_cleanup": "AsyncLocalStorage context cleared automatically on request completion. Connection returned to per-tenant pool.",
+      "step_8_response": "Fastify serialises response. Field-level permission filter strips hidden fields."
+    },
+    "async_local_storage_api": {
+      "forge.context()": "Returns current SiteContext. Synchronous. Zero overhead. Available anywhere in call stack.",
+      "forge.db": "Shorthand for forge.context().db — Drizzle connection for current tenant only",
+      "forge.user": "Shorthand for forge.context().user",
+      "forge.site": "Shorthand for forge.context().site",
+      "forge.hasModule(pkg)": "Check if module is installed on current tenant",
+      "forge.flag(key)": "Get feature flag value for current tenant"
+    },
+    "connection_pool_strategy": {
+      "min_connections_per_tenant": 2,
+      "max_connections_per_tenant": "Calculated from plan: starter=5, pro=15, enterprise=50",
+      "global_max_connections": "PostgreSQL max_connections / max_active_tenants",
+      "idle_timeout_ms": 30000,
+      "implementation": "postgres.js with built-in pooling"
+    },
+    "cache_strategy": {
+      "redis_key_format": "{site-id}:{category}:{key}",
+      "ttl_defaults": {
+        "site_config": "60 seconds (invalidated on config change)",
+        "user_session": "7 days sliding",
+        "permission_cache": "5 minutes",
+        "list_view_count": "30 seconds",
+        "link_field_options": "2 minutes"
+      },
+      "cache_invalidation": "forge.cache.del(key), forge.cache.delPattern(pattern), automatic on document save"
+    },
+    "background_jobs": {
+      "context_injection": "Each job receives a frozen SiteContext snapshot serialized at enqueue time",
+      "queue_naming": "{site-id}:forge:{priority}",
+      "job_payload_shape": { "site_id": "string", "job_name": "string", "data": "any", "enqueued_at": "timestamp", "user_id": "string?" },
+      "retry_strategy": "Exponential backoff: 1s, 5s, 30s. Max 3 attempts. Dead-letter queue after exhaustion.",
+      "scheduled_jobs": "Cron-like scheduling via BullMQ repeateable jobs. Defined in module's hookSchemas.",
+      "bullboard_dashboard": "/admin/queues (authenticated, admin role only)"
+    }
+  },
+
+  "permission_model": {
+    "description": "Three-layer permission system: role-action-schematype, attribute-based conditions, and field-level rules.",
+    "permission_rule_shape": {
+      "role": "string — role name",
+      "create": "boolean?",
+      "read": "boolean?",
+      "write": "boolean?",
+      "delete": "boolean?",
+      "submit": "boolean? (isSubmittable schemtypes only)",
+      "cancel": "boolean? (isSubmittable only)",
+      "amend": "boolean? (create new doc from cancelled)",
+      "export": "boolean? — can export list to CSV/Excel",
+      "print": "boolean? — can generate PDF prints",
+      "email": "boolean? — can send document via email",
+      "if_owner": "boolean? — applies rule only when user is document owner",
+      "if_condition": "string? — JavaScript expression returning boolean. Context: { doc, user, site }",
+      "fields": {
+        "description": "Field-level overrides",
+        "read_only": "string[]? — field names that become read-only for this role",
+        "hidden": "string[]? — field names hidden in API response AND Desk form",
+        "no_copy": "string[]? — field names excluded when duplicating a document"
+      }
+    },
+    "permission_query_hook": {
+      "description": "For record-level scoping (e.g. 'Sales Rep sees only own records')",
+      "signature": "(user: UserContext) => SQL | string | null",
+      "example": "permissionQuery: (user) => user.roles.includes('Manager') ? null : sql`owner = ${user.id}`",
+      "null_means": "No restriction — see all records"
+    },
+    "role_hierarchy": "Roles are flat (not hierarchical). A user can have multiple roles. Most permissive rule wins.",
+    "system_roles": ["Administrator", "Guest", "All (any logged-in user)"],
+    "rbac_check_api": "forge.permissions.check(user, action, schematype, doc?): boolean"
+  },
+
+  "forge_cli": {
+    "package": "forge-cli",
+    "binary": "forge",
+    "install": "npm install -g forge-cli",
+    "commands": {
+      "forge init <name>": {
+        "description": "Scaffold a new Forge workspace. Runs entirely without external dependencies.",
+        "flags": ["--no-docker: skip Docker Compose generation", "--template <name>: use a starter template"],
+        "creates": ["pnpm-workspace.yaml", "package.json", "tsconfig.base.json", ".gitignore", ".env.example", "docker-compose.yml", "forge.workspace.json", "packages/ structure", "apps/", "sites/", ".github/workflows/"]
+      },
+      "forge start": {
+        "description": "Start development server with hot reload",
+        "flags": ["--watch: enable file watching (default in dev)", "--port <n>: override HTTP port (default: 8000)", "--site <host>: start with a specific default site"],
+        "starts": ["Fastify HTTP server", "BullMQ workers (all 3 queues)", "Socket.io realtime server", "Vite dev server for @forge/desk (if installed)"]
+      },
+      "forge build": {
+        "description": "Build all packages for production",
+        "flags": ["--module <name>: build only one package"],
+        "steps": ["pnpm -r build (tsc for all packages)", "Vite build for desk + ui packages", "Generate OpenAPI spec", "Validate all Schemtypes"]
+      },
+      "forge site new <host>": {
+        "description": "Provision a new tenant site",
+        "flags": ["--plan <plan>: starter|pro|enterprise|selfhosted (default: selfhosted)", "--no-admin: skip admin user creation"],
+        "steps": ["Create Postgres database: forge_{host_normalized}", "Run @forge/core migrations (creates core tables)", "Create Administrator user (prompts for password)", "Write sites/{host}/site.json", "Register in forge_sites control table", "Print access URL and credentials"]
+      },
+      "forge site list": {
+        "description": "List all sites in workspace",
+        "output": "Table: host | plan | installed modules | last active | status"
+      },
+      "forge site drop <host> --confirm": {
+        "description": "Permanently delete a site and its database",
+        "safety": "Requires --confirm flag. Prints what will be destroyed. Waits for typed confirmation: type site name to confirm.",
+        "does": ["Drop Postgres database", "Delete sites/{host}/ directory", "Remove from forge_sites control table", "Flush Redis keys for this site"]
+      },
+      "forge site backup <host>": {
+        "description": "Backup a site to a local or remote archive",
+        "flags": ["--to <s3://bucket/path>: upload to S3-compatible storage", "--to <local-path>: save to local path (default: ./backups/)", "--include-files: include S3 file attachments (default: false)"],
+        "creates": "forge-backup-{host}-{timestamp}.tar.gz containing: pg_dump.sql.gz, site.json, file manifest"
+      },
+      "forge site restore <host> <archive>": {
+        "description": "Restore a site from a backup archive",
+        "behavior": "Creates site if it doesn't exist. Merges if it does (--force to overwrite)."
+      },
+      "forge module install <package> [--site <host>]": {
+        "description": "Install an npm package as a Forge module",
+        "flags": ["--site <host>: activate on specific site after install", "--all-sites: activate on all sites"],
+        "behavior": [
+          "Runs: pnpm add <package>",
+          "Reads package's forge.module.json manifest",
+          "Checks peerDependencies — prints WARNING for each unsatisfied peer dep",
+          "NEVER auto-installs peer deps — user must explicitly install them",
+          "If --site: updates sites/{host}/site.json, runs forge migrate --site {host}",
+          "Reloads server without restart (hot module registration)"
+        ]
+      },
+      "forge module list [--site <host>]": {
+        "description": "List installed modules and their activation status per site"
+      },
+      "forge module remove <package> --site <host>": {
+        "description": "Deactivate a module from a site",
+        "safety": "Does NOT drop DB tables. Use forge migrate --prune after confirming no data loss."
+      },
+      "forge migrate [--site <host>] [--dry-run]": {
+        "description": "Diff Schemtypes against live DB and apply migrations",
+        "flags": ["--site <host>: target specific site (default: all sites)", "--dry-run: print SQL without executing", "--prune: also drop columns/tables removed from Schemtypes (DANGEROUS — requires double confirmation)"],
+        "algorithm": [
+          "1. Load all registered Schemtypes (from installed modules + apps/)",
+          "2. Generate Drizzle schema for each",
+          "3. Run drizzle-kit introspect on target DB",
+          "4. Diff: new tables → CREATE TABLE, new columns → ALTER TABLE ADD COLUMN, type changes → ALTER TABLE ALTER COLUMN (safe casts only), removed columns → WARNING only (unless --prune)",
+          "5. Write migration SQL to _forge_migrations table",
+          "6. Execute in a DB transaction (rollback on any error)"
+        ]
+      },
+      "forge migrate status [--site <host>]": {
+        "description": "Show pending schema changes without applying them"
+      },
+      "forge generate schema <Name>": {
+        "description": "Scaffold a new Schematype file with starter template",
+        "flags": ["--module <path>: which package/app to create it in (prompts if omitted)", "--type <type>: basic|submittable|child|singleton"]
+      },
+      "forge generate app <name>": {
+        "description": "Scaffold a full Forge app package",
+        "creates": ["apps/{name}/schemas/ with example schema", "apps/{name}/hooks/ with example hook", "apps/{name}/routes/ with example route", "apps/{name}/package.json", "apps/{name}/tsconfig.json", "apps/{name}/README.md"]
+      },
+      "forge console [--site <host>]": {
+        "description": "Interactive REPL with full forge context",
+        "provides": ["forge.context() — active site context", "forge.db — Drizzle connection", "forge.getDoc(type, name)", "forge.saveDoc(doc)", "forge.deleteDoc(type, name)", "forge.enqueue(queue, job, data)"],
+        "example": "await forge.getDoc('Employee', 'EMP-001') // returns typed EmployeeDoc"
+      },
+      "forge logs [--site <host>] [--follow]": {
+        "description": "Stream logs from server processes",
+        "flags": ["--level <level>: error|warn|info|debug (default: info)", "--module <name>: filter by module"]
+      },
+      "forge setup production": {
+        "description": "Generate production process manager and web server config",
+        "generates": ["config/pm2.config.js — PM2 cluster config for HTTP + workers", "config/nginx.conf — Nginx reverse proxy with all active sites", "config/supervisor.conf — optional supervisor alternative to PM2"],
+        "then": "sudo nginx -t && sudo nginx -s reload"
+      },
+      "forge doctor": {
+        "description": "Diagnose workspace health",
+        "checks": ["Node.js version", "pnpm version", "Postgres connectivity", "Redis connectivity", "All sites accessible", "Pending migrations", "Module peer dependency warnings", "Queue health (BullMQ)", "Disk space"]
+      },
+      "forge test [--module <n>] [--coverage]": {
+        "description": "Run module tests via Vitest",
+        "isolation": "Each test file gets its own in-memory SQLite DB — no shared state, no cleanup needed"
+      }
+    }
+  },
+
+  "git_strategy": {
+    "repositories": {
+      "forge-framework": {
+        "url": "github.com/your-org/forge-framework",
+        "type": "pnpm monorepo",
+        "license": "MIT (per package)",
+        "contains": ["packages/core", "packages/cli", "packages/desk", "packages/ui", "packages/permissions", "packages/workflow", "packages/print", "packages/reports", "packages/erp", "packages/hr", "packages/crm", "packages/helpdesk", "packages/mfg"],
+        "purpose": "Primary open-source repository. All MIT-licensed packages.",
+        "npm_publish": "All packages under @forge/* scope + forge-cli + forge-ui",
+        "branch_strategy": {
+          "main": "Always release-ready. Protected. PRs only.",
+          "develop": "Integration branch. All features merge here first.",
+          "feat/{name}": "Feature branches off develop",
+          "fix/{name}": "Bug fix branches off main (for hotfixes) or develop",
+          "release/{version}": "Release preparation branch. Changesets PR created here.",
+          "chore/{name}": "Non-functional changes (docs, deps, config)"
+        }
+      },
+      "forge-cloud": {
+        "url": "github.com/your-org/forge-cloud",
+        "type": "standalone app",
+        "license": "AGPL-3.0",
+        "contains": ["Cloud control plane", "Forge Cloud dashboard UI", "Server provisioner", "Billing engine", "Marketplace backend"],
+        "purpose": "Open-source cloud control plane. Anyone can self-host Forge Cloud.",
+        "branch_strategy": "Same as forge-framework",
+        "relationship": "Uses @forge/core as a dependency. Is itself a Forge app."
+      },
+      "forge-agent": {
+        "url": "github.com/your-org/forge-agent",
+        "type": "standalone microservice",
+        "license": "MIT",
+        "contains": ["Node.js Express REST API", "Server management endpoints", "Nginx config manager", "Backup orchestrator"],
+        "purpose": "Installed on each managed server. Communicates with forge-cloud control plane.",
+        "deploy": "Docker image: ghcr.io/your-org/forge-agent:latest",
+        "branch_strategy": "main + feat/*, fix/*"
+      },
+      "forge-docs": {
+        "url": "github.com/your-org/forge-docs",
+        "type": "documentation site",
+        "license": "MIT",
+        "framework": "Nextra (Next.js-based docs)",
+        "deploy": "Vercel (auto-deploy on push to main)",
+        "purpose": "Public documentation at docs.forge.dev"
+      }
+    },
+    "workflow": {
+      "starting_a_feature": [
+        "git checkout develop && git pull",
+        "git checkout -b feat/your-feature-name",
+        "Write tests first (TDD)",
+        "Implement feature",
+        "pnpm test && pnpm type-check && pnpm lint",
+        "git add -p  # review each hunk before staging",
+        "git commit -m 'feat(package): description'  # Conventional Commits",
+        "git push origin feat/your-feature-name",
+        "Open PR → develop"
+      ],
+      "commit_message_format": "type(scope): description\\n\\nBody (optional)\\n\\nBREAKING CHANGE: (if applicable)",
+      "commit_types": {
+        "feat": "new feature",
+        "fix": "bug fix",
+        "docs": "documentation only",
+        "chore": "maintenance (deps, config)",
+        "refactor": "code change without feature/fix",
+        "test": "adding or fixing tests",
+        "perf": "performance improvement",
+        "ci": "CI/CD changes",
+        "build": "build system changes"
+      },
+      "commit_scopes": ["core", "cli", "desk", "ui", "permissions", "workflow", "print", "reports", "erp", "hr", "crm", "helpdesk", "mfg", "cloud", "agent", "docs"],
+      "releasing_packages": {
+        "step_1": "pnpm changeset  # describe what changed and which packages",
+        "step_2": "git add .changeset/*.md && git commit -m 'chore: add changeset'",
+        "step_3": "Push to develop → merge to main → Changesets GitHub Action creates a 'Version Packages' PR automatically",
+        "step_4": "Merge the 'Version Packages' PR → GitHub Action publishes to npm automatically",
+        "manual_release": "pnpm version-packages && pnpm build && pnpm release"
+      }
+    },
+    "multi_repo_push_strategy": {
+      "description": "forge-cloud and forge-agent are separate repos but may need changes in sync with forge-framework",
+      "method_git_subtree": {
+        "description": "Best for keeping forge-cloud as a subdirectory of forge-framework that syncs to its own repo",
+        "setup": [
+          "# In forge-framework root:",
+          "git subtree add --prefix=cloud https://github.com/your-org/forge-cloud main --squash",
+          "# Pull updates from forge-cloud:",
+          "git subtree pull --prefix=cloud https://github.com/your-org/forge-cloud main --squash",
+          "# Push changes back to forge-cloud:",
+          "git subtree push --prefix=cloud https://github.com/your-org/forge-cloud main"
+        ]
+      },
+      "method_separate_checkout": {
+        "description": "Keep separate checkouts — simpler for independent development",
+        "workflow": [
+          "cd ~/projects/forge-framework  # main work",
+          "cd ~/projects/forge-cloud      # cloud work",
+          "cd ~/projects/forge-agent      # agent work",
+          "# When @forge/core changes that forge-cloud depends on:",
+          "cd forge-framework && pnpm build && pnpm changeset",
+          "# After npm publish, update forge-cloud:",
+          "cd forge-cloud && pnpm update @forge/core"
+        ]
+      },
+      "recommended": "Use separate checkouts for forge-cloud and forge-agent. Use pnpm workspace protocol during development. Publish @forge/core to npm for cloud/agent consumption."
+    }
+  },
+
+  "forge_cloud_architecture": {
+    "control_plane": {
+      "name": "forge-cloud",
+      "description": "The orchestrator that manages servers, sites, modules, billing, and marketplace. Built as a Forge app on @forge/core.",
+      "repo": "github.com/your-org/forge-cloud",
+      "license": "AGPL-3.0",
+      "schemtypes": [
+        "Server (cloud provider, region, IP, agent URL, status, plan)",
+        "Bench (server FK, workspace config, installed packages, nginx config)",
+        "Site (bench FK, host, plan, status, installed modules, db_url)",
+        "BackupJob (site FK, status, archive_url, size_bytes, completed_at)",
+        "DeployJob (site FK, module, version, status, log)",
+        "MarketplaceApp (name, github_url, version, install_count, revenue_share_rate)",
+        "Partner (org_name, credits_balance, commission_rate)",
+        "Subscription (site FK, plan, amount, billing_cycle, next_billing_at)",
+        "Invoice (subscription FK, amount, status, payment_gateway_id)"
+      ],
+      "modules": [
+        "@forge/erp (for billing and invoicing)",
+        "@forge/crm (for partner management)",
+        "custom: provisioner, marketplace, monitoring"
+      ]
+    },
+    "forge_agent": {
+      "name": "forge-agent",
+      "description": "Lightweight Node.js REST API installed on each managed server. Receives commands from forge-cloud control plane.",
+      "repo": "github.com/your-org/forge-agent",
+      "license": "MIT",
+      "install": "docker run -d --name forge-agent -p 7777:7777 -v /var/run/docker.sock:/var/run/docker.sock -e AGENT_SECRET=<hmac-secret> ghcr.io/your-org/forge-agent:latest",
+      "security": "All requests verified via HMAC-SHA256 signature in X-Forge-Signature header. Secret rotatable without restart.",
+      "api_endpoints": {
+        "GET /health": "Returns agent status, disk usage, process list",
+        "POST /workspace/create": "{ packages: string[], docker_compose: string } → spin up Docker containers",
+        "POST /workspace/update": "{ packages: string[], pull: boolean } → update packages, reload",
+        "POST /site/create": "{ host: string, plan: string, modules: string[] } → create DB, migrate, add nginx vhost",
+        "POST /site/drop": "{ host: string, backup_first: boolean } → remove site, optionally backup first",
+        "POST /site/migrate": "{ host: string } → run pending migrations on site",
+        "POST /site/backup": "{ host: string, upload_to: string? } → pg_dump, compress, optionally upload to S3",
+        "POST /site/restore": "{ host: string, archive_url: string } → download archive, restore DB",
+        "POST /nginx/reload": "Validate and reload nginx config",
+        "POST /ssl/issue": "{ host: string } → run certbot for Let's Encrypt cert",
+        "GET /logs": "{ service: string, lines: number } → tail service logs",
+        "GET /metrics": "Returns Prometheus metrics (CPU, memory, request rates)"
+      }
+    },
+    "provisioning_flow": [
+      "1. User signs up on Forge Cloud → forge-cloud creates their Organization site",
+      "2. User chooses plan + cloud provider + region",
+      "3. forge-cloud calls cloud provider API (Hetzner/AWS/DO) to create VM",
+      "4. forge-cloud SSH-bootstraps the VM: installs Docker, installs forge-agent container",
+      "5. forge-cloud registers VM in Server schematype, stores agent URL + HMAC secret",
+      "6. forge-cloud calls agent /workspace/create to set up Docker Compose (Postgres + Redis + Nginx)",
+      "7. forge-cloud calls agent /site/create with the user's host + plan + modules",
+      "8. agent runs forge-cli commands internally to create the site",
+      "9. agent calls /ssl/issue to get Let's Encrypt cert",
+      "10. Site is live. forge-cloud updates Site.status = 'active'",
+      "11. User receives welcome email with site URL and admin credentials"
+    ],
+    "marketplace": {
+      "submission_requirements": [
+        "GitHub repository (public or private with deploy key)",
+        "forge.module.json manifest in repo root",
+        "MIT or GPL-compatible license",
+        "Passes automated npm audit (no high/critical vulnerabilities)",
+        "At least 1 test file",
+        "README.md with install instructions"
+      ],
+      "forge_module_json_shape": {
+        "name": "string — npm package name",
+        "forge_version": "string — minimum @forge/core version required",
+        "label": "string — display name",
+        "description": "string",
+        "category": "string — ERP | HR | CRM | Productivity | Industry | Integration | Developer",
+        "screenshots": "string[] — URLs",
+        "peer_dependencies": "Record<string, string> — optional integrations",
+        "schemtypes": "string[] — list of Schematype names exported",
+        "permissions": "string[] — system permissions required"
+      },
+      "revenue_sharing": {
+        "free_apps": "25% of Forge Cloud hosting revenue shared with all free app publishers, proportional to installs × complexity rating",
+        "paid_apps": "Stripe Connect for developers. Forge takes 15% platform fee.",
+        "payment_schedule": "Quarterly. Minimum threshold: $50.",
+        "rating_factors": "App complexity, dependency count, support quality, update frequency"
+      }
+    }
+  },
+
+  "frontend_design_system": {
+    "description": "forge-ui: the React component library. All Forge frontends (Desk + Cloud dashboard + partner apps) use this.",
+    "design_principles": [
+      "Flat surfaces only — no gradients, no shadows, no glassmorphism",
+      "Minimal borders — 0.5px, neutral color, almost invisible",
+      "Generous whitespace — components breathe, never cramped",
+      "Dark mode mandatory — every component works in both light and dark",
+      "Accessible first — WCAG 2.1 AA, keyboard navigation, screen reader labels",
+      "CSS variables for theming — never hardcode hex values",
+      "Sentence case always — no Title Case, no ALL CAPS in UI text"
+    ],
+    "design_tokens": {
+      "colors": {
+        "background_primary": "White / Near-black",
+        "background_secondary": "Subtle surface",
+        "background_tertiary": "Page background",
+        "text_primary": "Black / White",
+        "text_secondary": "Muted",
+        "text_tertiary": "Hints/placeholders",
+        "border_tertiary": "0.15α (default)",
+        "border_secondary": "0.30α (hover)",
+        "border_primary": "0.40α (active/focus)",
+        "semantic": "info/success/warning/danger in background + text + border variants"
+      },
+      "typography": {
+        "font_sans": "Geist Sans (primary)",
+        "font_mono": "Geist Mono (code)",
+        "sizes": "12px (xs), 13px (sm), 14px (base), 16px (lg), 18px (h3), 22px (h1)",
+        "weights": "400 (regular) and 500 (medium) only — never 600 or 700"
+      },
+      "spacing": "4px base unit: 4, 8, 12, 16, 20, 24, 32, 40, 48, 64px",
+      "border_radius": "8px (md), 12px (lg), 16px (xl)",
+      "borders": "Always 0.5px — never 1px or 2px except for focus rings and accent borders"
+    },
+    "component_list": {
+      "primitives": ["Button", "IconButton", "Input", "Textarea", "Select", "MultiSelect", "Checkbox", "RadioGroup", "Switch", "Slider", "DatePicker", "DateRangePicker", "TimePicker", "ColorPicker", "FileUpload"],
+      "display": ["Badge", "Avatar", "AvatarGroup", "Tag", "Progress", "Spinner", "Skeleton", "Tooltip", "Popover"],
+      "layout": ["Card", "Separator", "Collapsible", "Tabs", "Accordion"],
+      "overlay": ["Modal", "Drawer", "AlertDialog", "ContextMenu", "DropdownMenu", "CommandPalette"],
+      "navigation": ["Sidebar", "Topbar", "Breadcrumb", "Pagination", "Stepper"],
+      "data": ["Table", "DataGrid", "KanbanBoard", "Calendar", "Timeline", "TreeView", "Chart (Chart.js wrapper)"],
+      "form": ["Form (renders from Schematype)", "FormField", "FormSection", "ChildTableEditor"],
+      "forge_specific": ["DocList (Schematype list view)", "DocForm (Schematype form view)", "LinkField (with search + preview)", "AttachField", "WorkflowStatusBar", "PrintButton", "DocTimeline", "DocActions"]
+    }
+  },
+
+  "security_model": {
+    "api_security": {
+      "authentication_methods": ["Session cookie (httpOnly, sameSite=strict, secure=true)", "API key (Bearer token in Authorization header)", "OAuth 2.0 (future — SAML/OIDC enterprise)"],
+      "session_security": ["128-bit random token via crypto.randomBytes(16)", "Stored as bcrypt hash in DB", "httpOnly cookie — JavaScript cannot access", "7-day sliding expiry", "Rotated on privilege escalation", "Invalidated on password change", "Brute force: 5 failures → 15-minute lockout"],
+      "api_key_security": ["bcrypt hashed on creation", "Never stored or logged plaintext", "Never returned by API after initial creation", "Scoped: read-only, read-write, or full-access", "Expiry optional", "Last-used timestamp tracked"],
+      "rate_limiting": ["100 req/min per IP on unauthenticated routes", "1000 req/min per authenticated user", "10 req/min on auth endpoints (brute force protection)", "Per-tenant configurable overrides for enterprise plans"],
+      "input_sanitization": ["All user input goes through Zod validation before any processing", "HTML fields sanitized via DOMPurify before storage", "File uploads: type validated (magic bytes + MIME), antivirus scan (optional ClamAV integration)", "No eval() anywhere in codebase — enforced by ESLint rule no-eval"],
+      "output_sanitization": ["Hidden fields stripped from API responses before serialization", "Stack traces never returned to client (pino logs them server-side)", "SQL error messages abstracted to generic 'database error'"],
+      "headers": ["Strict-Transport-Security: max-age=31536000; includeSubDomains", "X-Content-Type-Options: nosniff", "X-Frame-Options: DENY", "Content-Security-Policy: defined per route group", "Referrer-Policy: strict-origin-when-cross-origin", "Permissions-Policy: camera=(), microphone=(), geolocation=()"]
+    },
+    "data_security": {
+      "at_rest": ["PostgreSQL: pg_crypto for column-level encryption on sensitive fields (SSN, bank accounts)", "Backups: AES-256-GCM encrypted before upload to S3", "File uploads: S3 server-side encryption (SSE-S3 or SSE-KMS)"],
+      "in_transit": ["TLS 1.2+ required. TLS 1.0/1.1 disabled.", "HSTS header enforced", "Internal service communication (control plane → agent) via HMAC-signed requests"],
+      "pii_handling": ["Fields marked sensitive: excluded from Pino logs automatically", "PII audit log: access to sensitive fields logged with user+timestamp", "Right to erasure: forge site delete + GDPR purge job implementation guide"]
+    },
+    "tenant_isolation_guarantees": {
+      "database": "Separate PostgreSQL database per tenant. Cross-tenant SQL queries architecturally impossible through Forge API.",
+      "redis": "All keys prefixed {site-id}:. Forge Redis wrapper enforces this — raw ioredis not exposed to app code.",
+      "files": "All S3 paths prefixed forge/{site-id}/. Pre-signed URLs include scope condition.",
+      "queues": "BullMQ queues namespaced {site-id}:forge:{priority}. Workers process any tenant's queue but carry tenant context in job payload.",
+      "realtime": "Socket.io rooms scoped to {site-id}. Events cannot broadcast cross-tenant.",
+      "jobs": "Background job context snapshot includes site_id. If site_id in snapshot ≠ current tenant context, job throws immediately.",
+      "test_coverage": "Dedicated cross-tenant isolation test suite in packages/core/src/__tests__/isolation/. Must pass in CI."
+    },
+    "dependencies": {
+      "policy": "pnpm audit --audit-level=moderate runs in CI. Fails build on high/critical vulnerabilities.",
+      "updates": "Dependabot configured for weekly npm + GitHub Actions updates.",
+      "supply_chain": "pnpm lockfile committed. .npmrc: prefer-frozen-lockfile=true. Provenance attestation on npm publishes."
+    }
+  },
+
+  "testing_strategy": {
+    "philosophy": "Test-Driven Development (TDD) is mandatory. Write the test first — see it fail — then implement — see it pass. Never ship untested code.",
+    "test_types": {
+      "unit_tests": {
+        "location": "packages/{name}/src/__tests__/",
+        "tool": "Vitest",
+        "db_strategy": "Each test file: const { db } = createTestSite() — creates isolated in-memory SQLite DB. No cleanup needed. Zero test interdependency.",
+        "coverage_target": "80% minimum. 100% for permission engine and migration runner.",
+        "naming": "describe('featureName', () => { it('does something specific', ...) })"
+      },
+      "integration_tests": {
+        "location": "tests/integration/",
+        "tool": "Vitest + testcontainers (real Postgres + Redis in Docker)",
+        "coverage": "Full request lifecycle: HTTP → auth → permission → hook chain → DB → response",
+        "cross_tenant_suite": "tests/integration/tenant-isolation.test.ts — mandatory 100% pass in CI"
+      },
+      "e2e_tests": {
+        "location": "tests/e2e/",
+        "tool": "Playwright (future — Phase 6)",
+        "scope": "Critical user journeys: login, create invoice, run payroll, submit purchase order"
+      }
+    },
+    "test_helpers": {
+      "createTestSite": "forge.testing.createTestSite() — creates isolated SQLite DB + test user + roles",
+      "createTestUser": "forge.testing.createTestUser(role) — creates user with specified role in test site",
+      "httpClient": "forge.testing.createClient(site) — Fastify inject wrapper with auth pre-configured",
+      "assertPermission": "forge.testing.assertPermission(user, action, schematype, shouldAllow: boolean)"
+    }
+  },
+
+  "first_party_apps": {
+    "@forge/erp": {
+      "description": "Enterprise Resource Planning. Standalone — requires no other @forge/* app.",
+      "modules": {
+        "accounts": {
+          "schemtypes": ["Account (chart of accounts)", "JournalEntry", "JournalEntryLine (child)", "SalesInvoice", "SalesInvoiceLine (child)", "PurchaseInvoice", "PurchaseInvoiceLine (child)", "Payment", "PaymentAllocation (child)", "BankStatement", "BankStatementLine (child)", "CostCenter", "Budget", "BudgetDetail (child)", "FiscalYear", "AccountingPeriod"],
+          "features": ["Double-entry bookkeeping validation on every GL posting (debit==credit or throw)", "Multi-company support (one DB, scoped by company field)", "Tax engine: GST India (CGST/SGST/IGST/CESS) + configurable custom taxes", "Bank reconciliation: match bank statement lines to payments", "Aged receivables + payables report", "P&L + Balance Sheet + Trial Balance auto-generated reports", "Cost center + budget tracking", "Fiscal year + period management"]
+        },
+        "inventory": {
+          "schemtypes": ["Item", "ItemGroup", "ItemPrice", "Warehouse", "StockLedgerEntry", "StockReconciliation", "PurchaseOrder", "PurchaseOrderLine (child)", "PurchaseReceipt", "PurchaseReceiptLine (child)", "SalesOrder", "SalesOrderLine (child)", "DeliveryNote", "DeliveryNoteLine (child)"],
+          "features": ["Stock valuation: FIFO + Moving Average + AVCO", "Negative stock prevention (configurable)", "Batch tracking + serial number tracking", "Multi-warehouse transfers", "Reorder alerts", "Stock aging report"]
+        }
+      }
+    },
+    "@forge/hr": {
+      "description": "Human Resources. Completely standalone. GL integration via optional @forge/erp peer dep.",
+      "modules": {
+        "employees": {
+          "schemtypes": ["Employee", "Department", "Designation", "EmploymentType", "Branch", "Holiday", "HolidayList"],
+          "features": ["Org chart view", "Employee lifecycle: onboarding → active → separation", "Document checklist per lifecycle stage"]
+        },
+        "attendance": {
+          "schemtypes": ["Shift", "ShiftAssignment", "AttendanceRecord", "AttendanceRequest", "LeaveType", "LeaveAllocation", "LeaveApplication"],
+          "features": ["Biometric device integration hooks", "Auto attendance from check-in records", "Leave balance calculation", "Half-day support", "Comp-off tracking"]
+        },
+        "payroll": {
+          "schemtypes": ["SalaryStructure", "SalaryComponent", "SalarySlip", "SalarySlipLine (child)", "PayrollEntry", "AdditionalSalary"],
+          "features": ["Salary structure with formula-based components", "Indian payroll: PF (12% basic, employer), ESI, PT, TDS (old + new regime)", "Payslip generation (PDF via @forge/print)", "Net pay calculation with all deductions", "GL posting on payroll (requires @forge/erp as peer dep — optional)"]
+        }
+      }
+    },
+    "@forge/crm": {
+      "description": "Customer Relationship Management. Standalone.",
+      "schemtypes": ["Lead", "Contact", "Account (CRM Account, not GL)", "Deal", "DealStage", "Activity", "Note", "EmailTemplate", "Quotation", "QuotationLine (child)"],
+      "features": ["Visual pipeline (Kanban by stage)", "Email integration (IMAP fetch + SMTP send)", "Activity timeline per contact/deal", "Lead scoring", "Win/loss analysis", "Quotation PDF generation"]
+    },
+    "@forge/helpdesk": {
+      "description": "Customer Support. Standalone.",
+      "schemtypes": ["Ticket", "TicketComment (child)", "SLAPolicy", "SLABreach", "KnowledgeBaseCategory", "KnowledgeBaseArticle", "CustomerPortalUser", "SatisfactionRating"],
+      "features": ["Email-to-ticket (IMAP integration)", "SLA timer with breach alerts", "Auto-assignment rules (round-robin, load-balanced)", "Customer portal (public-facing, no Desk required)", "Knowledge base with search", "CSAT survey on ticket close", "Escalation rules (SLA breach → supervisor notification)"]
+    }
+  },
+
+  "open_source_model": {
+    "revenue_sources": {
+      "primary": "Forge Cloud hosting — compute-based pricing (CPU/RAM/storage), NOT per-user, NOT per-module",
+      "secondary": "Marketplace paid apps — 15% platform fee on paid app subscriptions",
+      "revenue_share": "25% of total cloud hosting revenue distributed to free app publishers on marketplace",
+      "enterprise": "Annual contracts: SAML SSO, audit logs, dedicated support, SLA, data residency",
+      "partners": "Partner credits model — partners buy credits, allocate to customer sites"
+    },
+    "pricing_principles": [
+      "Never charge per user (unlike SAP, Salesforce, Zoho)",
+      "Never charge per module (unlike Odoo Enterprise)",
+      "Charge for compute — scales with actual usage, not team size",
+      "Free tier: one site, Hetzner CX11 (2 vCPU, 2GB RAM) — suitable for solo developers and small teams",
+      "Starter: ₹2,000/month (~$25) — 1 site, Hetzner CX21, managed updates + backups",
+      "Pro: ₹8,000/month (~$95) — 5 sites, dedicated server, priority support",
+      "Enterprise: Custom — unlimited sites, data residency, SAML, dedicated infra"
+    ],
+    "partner_program": {
+      "tiers": ["Bronze: free, self-serve", "Silver: ₹50,000/year — lead referrals, co-marketing", "Gold: ₹200,000/year — priority support, custom agreements"],
+      "benefits": ["Lead referrals from Forge Cloud signups", "20% commission on referred subscriptions", "Co-sell support from Forge sales team", "Early access to new features", "Partner portal with CRM and billing"],
+      "target_partners": ["System integrators", "Accounting firms (for @forge/erp)", "HR consultants (for @forge/hr)", "ISVs building on Forge"]
+    }
+  }
+}
