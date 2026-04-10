@@ -1,3 +1,6 @@
-// @forge/cli — entry point
-// TODO: implement
-export {}
+// forge-cli — entry point
+
+export { scaffoldWorkspace } from './commands/init'
+export { createSite } from './commands/site-new'
+export { listSites } from './commands/site-list'
+export { checkNodeVersion, runDoctorChecks } from './commands/doctor'
